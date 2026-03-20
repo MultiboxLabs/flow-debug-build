@@ -65,17 +65,7 @@ async function findFlatpakBundles(dir: string): Promise<string[]> {
   return found.sort();
 }
 
-function appIdFromFlatpakRef(refLine: string): string | null {
-  const ref = refLine.trim().split(/\s+/)[0];
-  if (!ref) {
-    return null;
-  }
-  const parts = ref.split("/");
-  if (parts.length >= 2 && parts[0] === "app") {
-    return parts[1] ?? null;
-  }
-  return null;
-}
+const FLOW_FLATPAK_APP_ID = "com.flow_browser.flow";
 
 // Main //
 export async function installFlowDebugBuild(
@@ -163,19 +153,6 @@ export async function installFlowDebugBuild(
       process.exit(1);
     }
 
-    let appId: string | null = null;
-    if (options.openApp || options.openFolder) {
-      const info = await spawn("flatpak", [
-        "info",
-        "--file",
-        bundles[0]!,
-        "--show-ref",
-      ]);
-      if (info.code === 0) {
-        appId = appIdFromFlatpakRef(info.stdout);
-      }
-    }
-
     for (const bundle of bundles) {
       console.log(`Installing Flatpak bundle: ${path.basename(bundle)}`);
       await spawnOrThrow(
@@ -191,18 +168,16 @@ export async function installFlowDebugBuild(
         : `Installed ${bundles.length} Flatpak bundles (user installation)`
     );
 
-    if (options.openApp && appId) {
-      await spawn("flatpak", ["run", appId], { stdio: "inherit" });
+    if (options.openApp) {
+      await spawn("flatpak", ["run", FLOW_FLATPAK_APP_ID], {
+        stdio: "inherit",
+      });
       console.log("Launched app via flatpak run");
-    } else if (options.openApp) {
-      console.warn(
-        "Could not determine app id from bundle; skip --open. Run `flatpak list` after install."
-      );
-    } else if (options.openFolder && appId) {
+    } else if (options.openFolder) {
       const appRoot = path.join(
         os.homedir(),
         ".local/share/flatpak/app",
-        appId
+        FLOW_FLATPAK_APP_ID
       );
       if (await exists(appRoot)) {
         await spawn("xdg-open", [appRoot], { stdio: "inherit" });
@@ -213,11 +188,6 @@ export async function installFlowDebugBuild(
         ], { stdio: "inherit" });
         console.log("Opened Flatpak app directory");
       }
-    } else if (options.openFolder) {
-      await spawn("xdg-open", [
-        path.join(os.homedir(), ".local/share/flatpak/app"),
-      ], { stdio: "inherit" });
-      console.log("Opened Flatpak app directory");
     }
 
     await fs.rm(tempDir, { recursive: true });
