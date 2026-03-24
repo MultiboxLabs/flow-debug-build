@@ -4,7 +4,6 @@ import {
   exists,
   extractZip,
   spawn,
-  spawnOrThrow,
 } from "./helpers/index.js";
 import path from "path";
 import fs from "fs/promises";
@@ -155,11 +154,24 @@ export async function installFlowDebugBuild(
 
     for (const bundle of bundles) {
       console.log(`Installing Flatpak bundle: ${path.basename(bundle)}`);
-      await spawnOrThrow(
-        "flatpak",
-        ["install", "--user", "-y", bundle],
-        { stdio: "inherit" }
+      const result = await spawn("flatpak", ["install", "--user", "-y", bundle]);
+
+      if (result.stdout) {
+        process.stdout.write(result.stdout);
+      }
+      if (result.stderr) {
+        process.stderr.write(result.stderr);
+      }
+
+      if (result.code === 0) {
+        continue;
+      }
+
+      const error = new Error(
+        `Command failed: flatpak install --user -y ${bundle}\n${result.stderr}`
       );
+      (error as Error & { result: typeof result }).result = result;
+      throw error;
     }
 
     console.log(
