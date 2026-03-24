@@ -4,7 +4,6 @@ import {
   exists,
   extractZip,
   spawn,
-  spawnOrThrow,
 } from "./helpers/index.js";
 import path from "path";
 import fs from "fs/promises";
@@ -153,20 +152,51 @@ export async function installFlowDebugBuild(
       process.exit(1);
     }
 
+    let installedBundleCount = 0;
+    let alreadyInstalledBundleCount = 0;
+
     for (const bundle of bundles) {
       console.log(`Installing Flatpak bundle: ${path.basename(bundle)}`);
-      await spawnOrThrow(
-        "flatpak",
-        ["install", "--user", "-y", bundle],
-        { stdio: "inherit" }
+      const result = await spawn("flatpak", ["install", "--user", "-y", bundle]);
+
+      if (result.stdout) {
+        process.stdout.write(result.stdout);
+      }
+      if (result.stderr) {
+        process.stderr.write(result.stderr);
+      }
+
+      if (result.code === 0) {
+        installedBundleCount += 1;
+        continue;
+      }
+
+      const installOutput = `${result.stdout}\n${result.stderr}`;
+      if (
+        installOutput.includes(
+          `This version of ${FLOW_FLATPAK_APP_ID} is already installed`
+        )
+      ) {
+        alreadyInstalledBundleCount += 1;
+        continue;
+      }
+
+      const error = new Error(
+        `Command failed: flatpak install --user -y ${bundle}\n${result.stderr}`
       );
+      (error as Error & { result: typeof result }).result = result;
+      throw error;
     }
 
-    console.log(
-      bundles.length === 1
-        ? "Flow (Debug Build) Flatpak installed (user installation)"
-        : `Installed ${bundles.length} Flatpak bundles (user installation)`
-    );
+    if (installedBundleCount > 0) {
+      console.log(
+        installedBundleCount === 1
+          ? "Flow (Debug Build) Flatpak installed (user installation)"
+          : `Installed ${installedBundleCount} Flatpak bundles (user installation)`
+      );
+    } else if (alreadyInstalledBundleCount === bundles.length) {
+      console.log("Flow (Debug Build) Flatpak is already installed");
+    }
 
     if (options.openApp) {
       await spawn("flatpak", ["run", FLOW_FLATPAK_APP_ID], {
