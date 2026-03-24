@@ -152,6 +152,9 @@ export async function installFlowDebugBuild(
       process.exit(1);
     }
 
+    let installedBundleCount = 0;
+    let alreadyInstalledBundleCount = 0;
+
     for (const bundle of bundles) {
       console.log(`Installing Flatpak bundle: ${path.basename(bundle)}`);
       const result = await spawn("flatpak", ["install", "--user", "-y", bundle]);
@@ -164,6 +167,17 @@ export async function installFlowDebugBuild(
       }
 
       if (result.code === 0) {
+        installedBundleCount += 1;
+        continue;
+      }
+
+      const installOutput = `${result.stdout}\n${result.stderr}`;
+      if (
+        installOutput.includes(
+          `This version of ${FLOW_FLATPAK_APP_ID} is already installed`
+        )
+      ) {
+        alreadyInstalledBundleCount += 1;
         continue;
       }
 
@@ -174,11 +188,15 @@ export async function installFlowDebugBuild(
       throw error;
     }
 
-    console.log(
-      bundles.length === 1
-        ? "Flow (Debug Build) Flatpak installed (user installation)"
-        : `Installed ${bundles.length} Flatpak bundles (user installation)`
-    );
+    if (installedBundleCount > 0) {
+      console.log(
+        installedBundleCount === 1
+          ? "Flow (Debug Build) Flatpak installed (user installation)"
+          : `Installed ${installedBundleCount} Flatpak bundles (user installation)`
+      );
+    } else if (alreadyInstalledBundleCount === bundles.length) {
+      console.log("Flow (Debug Build) Flatpak is already installed");
+    }
 
     if (options.openApp) {
       await spawn("flatpak", ["run", FLOW_FLATPAK_APP_ID], {
